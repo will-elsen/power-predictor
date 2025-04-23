@@ -1,6 +1,9 @@
 import requests
 import sys
 
+# William Elsen: 4/23/35. 
+# Code written by Claude AI, edited by William Elsen
+
 def get_card_info(card_name):
     """
     Fetch Magic: The Gathering card information from Scryfall API
