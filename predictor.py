@@ -20,11 +20,11 @@ class card_utils:
         url = f"https://api.scryfall.com/cards/named?exact={card_name}"
         
         try:
-            response = requests.get(url).content
+            response = requests.get(url).json()
             
             # Check if the request was successful
-            if response.status_code == 200:
-                card_data = response.json()
+            if response:
+                card_data = response
                 
                 # Extract the requested information
                 card_info = {
@@ -59,18 +59,3 @@ class card_utils:
             if "Creature" in card_info['types']:
                 print(f"Power/Toughness: {card_info['power']}/{card_info['toughness']}")
             print(f"Oracle Text: {card_info['oracle_text']}")
-
-def main():
-    # Get card name from command line or prompt user
-    if len(sys.argv) > 1:
-        card_name = ' '.join(sys.argv[1:])
-    else:
-        card_name = input("Enter card name: ")
-    
-    # Get and display card information
-    card_info = get_card_info(card_name)
-    if card_info:
-        display_card_info(card_info)
-
-if __name__ == "__main__":
-    main()

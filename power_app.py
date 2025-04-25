@@ -3,6 +3,8 @@ import openai
 import re
 import predictor
 import requests
+from PIL import Image
+from io import BytesIO
 
 # Set page config
 st.set_page_config(page_title="MTG Card Power Rater", page_icon="✨", layout="wide")
@@ -28,14 +30,16 @@ with st.form("card_form"):
         
     if card_name:
         card_info = predictor.card_utils.get_card_info(card_name)
+        # print(card_info)
         
     with col2:
         st.subheader("Card Image")
         if card_name:
             card_image_uri = card_info["image_uris"]['png']
+            
+            
             image = requests.get(card_image_uri)
-            print
-            print(card_image_uri)
+            image = Image.open(BytesIO(image.content))
             st.image(image, use_container_width=True)
     
     submitted = st.form_submit_button("Analyze Card")
