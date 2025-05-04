@@ -1,7 +1,7 @@
 import os
 import pandas as pd
 import numpy as np
-from datasets import Dataset
+import predictor
 import torch
 from transformers import (
     AutoModelForCausalLM,
@@ -12,8 +12,10 @@ from transformers import (
 )
 from peft import LoraConfig, get_peft_model
 from sklearn.model_selection import train_test_split
+from datasets import Dataset
 
 # Configuration
+print("configuring model...")
 MODEL_NAME = "meta-llama/Llama-3-8B"  # You'll need proper access to use this
 OUTPUT_DIR = "./mtg_rating_model"
 LORA_R = 16
@@ -23,6 +25,7 @@ LEARNING_RATE = 2e-4
 BATCH_SIZE = 4
 EPOCHS = 3
 MAX_LENGTH = 512
+
 
 # Sample data structure (replace with your actual data)
 # This is just an example - you would load your actual data
@@ -130,20 +133,18 @@ def load_sample_data():
         "Slime Against Humanity",
         "Sunfall"
     ]
+    
+    # fetch data from scryfall and append to cards_with_data for use in training
+    cards_with_data = []
+    for card in cards:
+        card_info = predictor.card_utils.get_card_info(card)
+        with_data = f"Name: {card_info['name']}\nMana Cost: {card_info['mana_cost']}\nTypes: {card_info['types']}\nOracle Text: {card_info['oracle_text']}\nPower/Toughness: {card_info['power']}/{card_info['toughness']}\nLoyalty: {card_info['loyalty']}\n\n."
+        cards_with_data.append(with_data)
+        
     # Random ratings for the example
     ratings = [1, 2, 1, 2, 3, 4, 2, 2, 4, 3, 1, 2, 1, 4, 2, 2, 2, 4, 3, 1, 2, 3, 2, 2, 3, 3, 2, 1, 3, 1, 3, 3, 2, 3, 4, 3, 1, 3, 1, 3, 4, 2, 4, 3, 2, 3, 3, 4, 1, 2, 2, 2, 3, 2, 2, 3, 2, 2, 4, 1, 3, 4, 1, 1, 3, 3, 3, 5, 2, 3, 2, 1, 3, 3, 5, 3, 1, 3, 2, 2, 3, 2, 2, 3, 3, 2, 3, 2, 2, 1, 2, 2, 1, 2, 3, 3, 2, 2, 4, 3]
     
-    return pd.DataFrame({"card_name": cards, "rating": ratings})
-
-# Load your data
-def load_real_data(file_path):
-    """Load the real dataset from a CSV or Excel file"""
-    if file_path.endswith('.csv'):
-        return pd.read_csv(file_path)
-    elif file_path.endswith(('.xls', '.xlsx')):
-        return pd.read_excel(file_path)
-    else:
-        raise ValueError("Unsupported file format. Please use CSV or Excel.")
+    return pd.DataFrame({"card_with_data": cards_with_data, "rating": ratings})
 
 # Format the prompt and completion
 def format_examples(df):
@@ -152,7 +153,7 @@ def format_examples(df):
     
     for _, row in df.iterrows():
         # Prompt - asking about a specific card
-        prompt = f"Rate the Magic: The Gathering card '{row['card_name']}' on a scale from 1 to 5 where 1 is very weak and 5 is extremely powerful.\n\nRating:"
+        prompt = f"Rate the Magic: The Gathering card '{row['card_with_data']}' on a scale from 1 to 5 where 1 is irrelevant to the current standard format and 5 is format-warping.\n\nRating:"
         
         # Completion - just the rating
         completion = f" {int(row['rating'])}"
@@ -201,14 +202,8 @@ def tokenize_function(examples, tokenizer):
 
 def main():
     # Load and prepare data
-    try:
-        print("Loading your MTG card dataset...")
-        # Replace 'your_data.csv' with your actual file path
-        df = load_real_data('your_data.csv')
-    except Exception as e:
-        print(f"Error loading your data: {e}")
-        print("Using sample data for demonstration instead.")
-        df = load_sample_data()
+    print("Loading sample data...")
+    df = load_sample_data()
     
     print(f"Loaded {len(df)} card ratings.")
     
