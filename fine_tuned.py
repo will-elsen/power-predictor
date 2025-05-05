@@ -4,19 +4,23 @@ import numpy as np
 import predictor
 import torch
 from transformers import (
-    AutoModelForCausalLM,
+    AutoModelForSequenceClassification,
     AutoTokenizer,
     TrainingArguments,
     Trainer,
-    DataCollatorForLanguageModeling
+    DataCollatorForLanguageModeling,
 )
 from peft import LoraConfig, get_peft_model
 from sklearn.model_selection import train_test_split
 from datasets import Dataset
 
+# login to Hugging Face Hub
+from huggingface_hub import login
+login()
+
 # Configuration
 print("configuring model...")
-MODEL_NAME = "meta-llama/Llama-3-8B"  # You'll need proper access to use this
+MODEL_NAME = "distilbert/distilbert-base-uncased"
 OUTPUT_DIR = "./mtg_rating_model"
 LORA_R = 16
 LORA_ALPHA = 32
@@ -226,7 +230,7 @@ def main():
         tokenizer.pad_token = tokenizer.eos_token
     
     # Load the model
-    model = AutoModelForCausalLM.from_pretrained(
+    model = AutoModelForSequenceClassification.from_pretrained(
         MODEL_NAME,
         torch_dtype=torch.float16,
         device_map="auto"
@@ -239,7 +243,7 @@ def main():
         lora_dropout=LORA_DROPOUT,
         bias="none",
         task_type="CAUSAL_LM",
-        target_modules=["q_proj", "k_proj", "v_proj", "o_proj"]  # Typical attention modules
+        target_modules=["q_lin", "k_lin", "v_lin", "o_lin"]  # Typical attention modules
     )
     
     # Apply LoRA to the model
@@ -278,7 +282,7 @@ def main():
         num_train_epochs=EPOCHS,
         per_device_train_batch_size=BATCH_SIZE,
         per_device_eval_batch_size=BATCH_SIZE,
-        evaluation_strategy="epoch",
+        eval_strategy="epoch",
         save_strategy="epoch",
         save_total_limit=2,
         learning_rate=LEARNING_RATE,
