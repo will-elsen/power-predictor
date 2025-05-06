@@ -17,7 +17,7 @@ Enter the card name you wish to evaluate to get a response.
 """)
 
 # API Key input
-api_key = "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"
+api_key = input("enter API key: ")
 
 card_info = None
 
@@ -74,26 +74,26 @@ def analyze_card(card_info):
     Be specific and refer to current Standard format meta knowledge as of April 2025.
     """
     
-    # try:
-    #     client = openai.OpenAI(api_key=api_key)
-    #     response = client.chat.completions.create(
-    #         model="gpt-4-turbo",
-    #         messages=[
-    #             {
-    #                 "role": "system",
-    #                 "content": system_prompt
-    #             },
-    #             {
-    #                 "role": "user",
-    #                 "content": f"Please analyze this Magic: The Gathering card:\n\nName: {card_info['name']}\nMana Cost: {card_info['mana_cost']}\nTypes: {card_info['types']}\nOracle Text: {card_info['oracle_text']}\nPower/Toughness: {card_info['power']}/{card_info['toughness']}\nLoyalty: {card_info['loyalty']}\n\nProvide a detailed analysis of its power level in the current Standard format (April 2025)."
-    #             }
-    #         ],
-    #         temperature=0.7,
-    #         max_tokens=1000
-    #     )
-    #     return response.choices[0].message.content
-    # except Exception as e:
-    #     return f"Error: {str(e)}"
+    try:
+        client = openai.OpenAI(api_key=api_key)
+        response = client.chat.completions.create(
+            model="gpt-4-turbo",
+            messages=[
+                {
+                    "role": "system",
+                    "content": system_prompt
+                },
+                {
+                    "role": "user",
+                    "content": f"Please analyze this Magic: The Gathering card:\n\nName: {card_info['name']}\nMana Cost: {card_info['mana_cost']}\nTypes: {card_info['types']}\nOracle Text: {card_info['oracle_text']}\nPower/Toughness: {card_info['power']}/{card_info['toughness']}\nLoyalty: {card_info['loyalty']}\n\nProvide a detailed analysis of its power level in the current Standard format (April 2025)."
+                }
+            ],
+            temperature=0.7,
+            max_tokens=1000
+        )
+        return response.choices[0].message.content
+    except Exception as e:
+        return f"Error: {str(e)}"
     return "yes"
 
 # Process form submission
