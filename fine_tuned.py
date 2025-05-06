@@ -8,9 +8,8 @@ from transformers import (
     AutoTokenizer,
     TrainingArguments,
     Trainer,
-    DataCollatorForLanguageModeling,
 )
-from peft import LoraConfig, get_peft_model
+from peft import LoraConfig, get_peft_model, TaskType
 from sklearn.model_selection import train_test_split
 from datasets import Dataset
 
@@ -27,12 +26,10 @@ LORA_ALPHA = 32
 LORA_DROPOUT = 0.05
 LEARNING_RATE = 2e-4
 BATCH_SIZE = 4
-EPOCHS = 3
+EPOCHS = 1
 MAX_LENGTH = 512
 
-
 # Sample data structure (replace with your actual data)
-# This is just an example - you would load your actual data
 def load_sample_data():
     """Load sample data or replace with your actual data loading code"""
     cards = [
@@ -145,64 +142,33 @@ def load_sample_data():
         with_data = f"Name: {card_info['name']}\nMana Cost: {card_info['mana_cost']}\nTypes: {card_info['types']}\nOracle Text: {card_info['oracle_text']}\nPower/Toughness: {card_info['power']}/{card_info['toughness']}\nLoyalty: {card_info['loyalty']}\n\n."
         cards_with_data.append(with_data)
         
-    # Random ratings for the example
+    # Ratings for example (1-5 scale)
     ratings = [1, 2, 1, 2, 3, 4, 2, 2, 4, 3, 1, 2, 1, 4, 2, 2, 2, 4, 3, 1, 2, 3, 2, 2, 3, 3, 2, 1, 3, 1, 3, 3, 2, 3, 4, 3, 1, 3, 1, 3, 4, 2, 4, 3, 2, 3, 3, 4, 1, 2, 2, 2, 3, 2, 2, 3, 2, 2, 4, 1, 3, 4, 1, 1, 3, 3, 3, 5, 2, 3, 2, 1, 3, 3, 5, 3, 1, 3, 2, 2, 3, 2, 2, 3, 3, 2, 3, 2, 2, 1, 2, 2, 1, 2, 3, 3, 2, 2, 4, 3]
     
-    return pd.DataFrame({"card_with_data": cards_with_data, "rating": ratings})
+    return pd.DataFrame({"card_text": cards_with_data, "rating": ratings})
 
-# Format the prompt and completion
-def format_examples(df):
-    """Format each example as a prompt-completion pair"""
-    formatted_data = []
-    
-    for _, row in df.iterrows():
-        # Prompt - asking about a specific card
-        prompt = f"Rate the Magic: The Gathering card '{row['card_with_data']}' on a scale from 1 to 5 where 1 is irrelevant to the current standard format and 5 is format-warping.\n\nRating:"
-        
-        # Completion - just the rating
-        completion = f" {int(row['rating'])}"
-        
-        formatted_data.append({
-            "prompt": prompt,
-            "completion": completion
-        })
-    
-    return pd.DataFrame(formatted_data)
-
-# Tokenize the data
+# Tokenize the data for sequence classification
 def tokenize_function(examples, tokenizer):
-    """Tokenize and format examples for training"""
-    prompt_tokens = tokenizer(examples["prompt"], truncation=True, max_length=MAX_LENGTH)
-    completion_tokens = tokenizer(examples["completion"], truncation=True, max_length=20)
+    """Tokenize examples for sequence classification"""
+    # Format the examples as input text
+    texts = [
+        f"Rate the Magic: The Gathering card '{card_text}' on a scale from 1 to 5 where 1 is irrelevant to the current standard format and 5 is format-warping."
+        for card_text in examples["card_text"]
+    ]
     
-    # Full sequence = prompt + completion
-    input_ids = []
-    labels = []
-    attention_mask = []
+    # Tokenize with padding and truncation
+    tokenized = tokenizer(
+        texts, 
+        padding="max_length",
+        truncation=True,
+        max_length=MAX_LENGTH,
+        return_tensors="pt"
+    )
     
-    for i in range(len(prompt_tokens["input_ids"])):
-        # Combine prompt and completion
-        prompt_ids = prompt_tokens["input_ids"][i]
-        completion_ids = completion_tokens["input_ids"][i]
-        
-        # Create full sequence
-        sequence_ids = prompt_ids + completion_ids[1:]  # Skip the BOS token
-        
-        # For labels, we set prompt tokens to -100 (ignored in loss)
-        sequence_labels = [-100] * len(prompt_ids) + completion_ids[1:]
-        
-        # Create attention mask
-        sequence_attention = [1] * len(sequence_ids)
-        
-        input_ids.append(sequence_ids)
-        labels.append(sequence_labels)
-        attention_mask.append(sequence_attention)
+    # Convert ratings to labels (subtract 1 to make labels 0-4 instead of 1-5)
+    tokenized["labels"] = [label - 1 for label in examples["rating"]]
     
-    return {
-        "input_ids": input_ids,
-        "labels": labels,
-        "attention_mask": attention_mask
-    }
+    return tokenized
 
 def main():
     # Load and prepare data
@@ -211,11 +177,8 @@ def main():
     
     print(f"Loaded {len(df)} card ratings.")
     
-    # Format the examples
-    formatted_df = format_examples(df)
-    
     # Split into train and validation sets
-    train_df, val_df = train_test_split(formatted_df, test_size=0.2, random_state=42)
+    train_df, val_df = train_test_split(df, test_size=0.2, random_state=42)
     
     # Create HF datasets
     train_dataset = Dataset.from_pandas(train_df)
@@ -229,20 +192,22 @@ def main():
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
     
-    # Load the model
+    # Load the model with num_labels=5 for the 1-5 rating scale
     model = AutoModelForSequenceClassification.from_pretrained(
         MODEL_NAME,
-        torch_dtype=torch.float16,
+        num_labels=5,  # 5 classes (ratings 1-5)
+        torch_dtype=torch.bfloat16,
         device_map="auto"
     )
     
     # Configure LoRA
     peft_config = LoraConfig(
+        inference_mode=False,
         r=LORA_R,
         lora_alpha=LORA_ALPHA,
         lora_dropout=LORA_DROPOUT,
         bias="none",
-        task_type="CAUSAL_LM",
+        task_type=TaskType.SEQ_CLS,  # Sequence classification task
         target_modules=["q_lin", "k_lin", "v_lin", "o_lin"]  # Typical attention modules
     )
     
@@ -257,6 +222,7 @@ def main():
     def tokenize_dataset(examples):
         return tokenize_function(examples, tokenizer)
     
+    # Process datasets with batched=True for efficiency
     tokenized_train = train_dataset.map(
         tokenize_dataset,
         batched=True,
@@ -267,12 +233,6 @@ def main():
         tokenize_dataset,
         batched=True,
         remove_columns=val_dataset.column_names
-    )
-    
-    # Data collator
-    data_collator = DataCollatorForLanguageModeling(
-        tokenizer=tokenizer,
-        mlm=False
     )
     
     # Training arguments
@@ -293,7 +253,7 @@ def main():
         load_best_model_at_end=True,
         metric_for_best_model="eval_loss",
         push_to_hub=False,
-        fp16=True,
+        fp16=False,
     )
     
     # Initialize Trainer
@@ -302,7 +262,6 @@ def main():
         args=training_args,
         train_dataset=tokenized_train,
         eval_dataset=tokenized_val,
-        data_collator=data_collator,
     )
     
     # Start training
@@ -315,42 +274,5 @@ def main():
     tokenizer.save_pretrained(OUTPUT_DIR)
     
     print("Training complete!")
-
-    # Demonstration of how to use the fine-tuned model
-    print("\nExample of using the fine-tuned model:")
-    print("---------------------------------------")
     
-    # Load the fine-tuned model
-    fine_tuned_model = AutoModelForCausalLM.from_pretrained(
-        OUTPUT_DIR,
-        torch_dtype=torch.float16,
-        device_map="auto"
-    )
-    
-    # Example card to evaluate
-    example_card = "Sol Ring"
-    prompt = f"Rate the Magic: The Gathering card '{example_card}' on a scale from 1 to 5 where 1 is very weak and 5 is extremely powerful.\n\nRating:"
-    
-    inputs = tokenizer(prompt, return_tensors="pt").to(fine_tuned_model.device)
-    
-    with torch.no_grad():
-        outputs = fine_tuned_model.generate(
-            **inputs,
-            max_new_tokens=10,
-            temperature=0.1,
-            num_return_sequences=1
-        )
-    
-    result = tokenizer.decode(outputs[0], skip_special_tokens=True)
-    print(f"Card: {example_card}")
-    print(f"Generated output: {result}")
-    
-    # Extract just the rating
-    try:
-        rating = result.split("Rating:")[-1].strip()
-        print(f"Predicted rating: {rating}")
-    except:
-        print("Couldn't parse rating from output.")
-
-if __name__ == "__main__":
-    main()
+main()
