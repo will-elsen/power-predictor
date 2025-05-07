@@ -28,9 +28,9 @@
   "revision": null,
   "target_modules": [
     "q_lin",
+    "v_lin",
     "o_lin",
-    "k_lin",
-    "v_lin"
+    "k_lin"
   ],
   "task_type": "SEQ_CLS",
   "trainable_token_indices": null,
